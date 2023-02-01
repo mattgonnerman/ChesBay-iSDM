@@ -1,25 +1,17 @@
 
+
+
 code <- nimbleCode({
   ### Grid Cell Occupancy/Abundance Intensity surface
   for(i in 1:n.cells){
-    #Occupancy/Zero-inflation term
-    cloglog(psi[i]) <- beta0.psi + inprod(beta.psi[1:5], grid.covs[i, 1:5]) #+ gamma.psi[i,s] 
-    z[i] ~ dbern(psi[i])
-    
     #Zero Inflated Poisson
-    log(lambda[i]) <- beta0.lambda + inprod(beta.lambda[1:5], grid.covs[i, 1:5]) # + gamma.lambda[i,s]
-    lambda.z[i] <- lambda[i]*(z[i]) + 1e-10*(1-z[i])
-    N[i] ~ dpois(lambda.z[i])
-    
-    # #Zero Inflated Negative Binomial
-    # log(lambda[i]) <- beta0.lambda + inprod(beta.lambda[1:5], grid.covs[i, 1:5]) # + gamma.lambda[i,s]
-    # p.nb[i] <- r.nb/(r.nb + (z[i]*lambda[i])) - 1e-10*(1-z[i])
-    # N[i] ~ dnegbin(prob = p.nb[i], size = r.nb)
+    cloglog(psi[i]) <- beta0.psi + inprod(beta.psi[1:5], grid.covs[i, 1:5]) #+ gamma.psi[i,s] 
+    lambda[i] <- exp(beta0.lambda + inprod(beta.lambda[1:5], grid.covs[i, 1:5])) # + gamma.lambda[i,s]
+    N[i] ~ dZIP(lambda[i], zeroProb = 1-psi[i])
   }
   
   beta0.psi ~ dnorm(0, sd = 10)
   beta0.lambda ~ dnorm(0, sd = 10)
-  # r.nb ~ dunif(0,50)
   for(i in 1:ncovs.grid){
     beta.psi[i] ~ dnorm(0, sd = 10) 
     beta.lambda[i] ~ dnorm(0, sd = 10)
@@ -35,25 +27,15 @@ code <- nimbleCode({
   # gamma.lambda[1:n.cells] ~ dcar_normal(adj[1:nadj],weights[1:nadj],num[1:n.cells],spacetau.lambda)
   # 
   
-  # ### EBird
-  # for(j in 1:ebird.nsurvey){
-  #   E.ebird[j] <- inprod(alpha.ebird[1:ebird.ncovs], ebird.covs[j,1:ebird.ncovs])
-  #   p.ebird[j] <- 1 - pow(.5,E.ebird[j])
-  #   
-  #   y.ebird[j] ~ dbinom(size = N[grid.ebird[j]], prob = p.ebird[j])
-  # }
-  # for(i in 1:ebird.ncovs){alpha.ebird[i] ~  T(dnorm(0,0.0001), 0,10000)}
-  # 
-  
   ### BBS
   for(j in 1:bbs.nsurvey){
     E.bbs[j] <- alpha.bbs[1]*bbs.Nposid[j] + alpha.bbs[2]*bbs.Nseen[j]
     p.bbs[j] <- 1 - (.5)^E.bbs[j]
-    
+
     y.bbs[j] ~ dbinom(size = N[grid.bbs[j]], prob = p.bbs[j])
   }
   for(i in 1:2){alpha.bbs[i] ~ T(dnorm(0,0.0001), 0,10000)}
-  
+
   
   ### BBL
   for(j in 1:bbl.nsurveys){
@@ -64,6 +46,17 @@ code <- nimbleCode({
   }
   for(i in 1:bbl.ncovs){alpha.bbl[i] ~ T(dnorm(0,0.0001), 0,10000)}
   # 
+  # ### EBird
+  # for(j in 1:ebird.nsurvey){
+  #   E.ebird[j] <- inprod(alpha.ebird[1:ebird.ncovs], ebird.covs[j,1:ebird.ncovs])
+  #   p.ebird[j] <- 1 - pow(.5,E.ebird[j])
+  #   
+  #   y.ebird[j] ~ dbinom(size = N[grid.ebird[j]], prob = p.ebird[j])
+  # }
+  # for(i in 1:ebird.ncovs){alpha.ebird[i] ~  T(dnorm(0,0.0001), 0,10000)}
+  # 
+  
+  
   # 
   # ### CBC
   # for(j in 1:cbc.nsurveys){

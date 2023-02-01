@@ -110,17 +110,19 @@ constants <- list(
 )
 
 ### Initial Values
-z.init <- rep(0, n.cells)
-for(i in 1:length(bbs.grid)){ 
-  if(z.init[bbs.grid[i]] == 0){
-    z.init[bbs.grid[i]] <- ifelse(bbs.counts[i] > 0, 1, 0)
+N.max <- rep(1, n.cells)
+for(i in 1:length(bbs.grid)){
+  if(bbs.counts[i] > N.max[bbs.grid[i]]){
+    N.max[bbs.grid[i]] <- bbs.counts[i] + 1
   }
 }
-for(i in 1:n.cells){ 
-  if(z.init[i] == 0){
-    z.init[i] <- ifelse(bbl.occ[i] > 0, 1, 0)
+
+for(i in 1:length(bbl.occ)){
+  if(bbl.occ[i] > N.max[i]){
+    N.max[i] <- bbl.occ[i] + 1
   }
 }
+
 # 
 # for(i in 1:length(ebird.grid)){ 
 #   if(z.init[ebird.grid[i]] == 0){
@@ -142,51 +144,28 @@ for(i in 1:n.cells){
 # }
 
 inits <- list(
-  #Effort
-  # alpha.ebird = rep(.01, ebird.ncovs),
-  # alpha.bbs = rep(.01, 2),
-  # alpha.bbl = rep(.01, bbl.ncovs),
-  # alpha.cbc = rep(.01, cbc.ncovs),
-  # alpha.mws = rep(.01, mws.ncovs),
-  # #dCAR
-  # spacetau.psi = 1,
-  # gamma.psi = rep(0, n.cells),
-  # spacetau.lambda = 1,
-  # gamma.lambda = matrix(0, n.cells, ntotspecies),
-  #Abundance
-  # r.nb = 1,
-  # lambda.z = z.init*rep(ceiling(mean(ebird.counts)), n.cells) + 1e-10*(1-z.init),
-  # lambda = rep(exp(1), n.cells),
+  N = N.max,
   beta.lambda = rep(0, ncovs.grid),
-  beta0.lambda = 1,
-  #Occupancy
-  # z = z.init,
-  # psi = rep(.5, n.cells),
+  beta0.lambda = log(mean(N.max)),
   beta.psi = rep(0, ncovs.grid),
-  beta0.psi = log(-log(1-.5))
+  beta0.psi = 0,
+  alpha.bbs = rep(1,2),
+  alpha.bbl = rep(1, bbl.ncovs)
 )
 
 ### Load Model Code
 source("iSDM - Nimble Model - Mallard.R")
+source("iSDM - ZIP Function.R")
+
 
 ### Check model before fully running
 #Looking for a non-NA value returned from calculate()
 model_test <- nimbleModel( code = code,
                            constants = constants,
                            data =  data,
-                           # inits = inits,
+                           inits = inits,
                            calculate = F)
-model_test$simulate(c(
-                      # "E.ebird", "p.ebird", "alpha.ebird",
-                      "E.bbs", "p.bbs", "alpha.bbs",
-                      "E.bbl", "p.bbl", "alpha.bbl",
-                      # "E.mws", "p.mws", "alpha.mws",
-                      # "E.cbc", "p.cbc", "alpha.cbc",
-                      # "r.nb", "p.nb",
-                      # "gamma.psi", "spacetau.psi", "gamma.lambda", "spacetau.lambda",
-                      "beta0.psi", "beta.psi", "beta0.lambda", "beta.lambda",
-                      "psi", "N", "lambda", "lambda.z","z" 
-                      ))
+model_test$simulate(c("psi", "lambda", "E.bbs", "p.bbs", "E.bbl", "p.bbl"))
 model_test$initializeInfo()
 model_test$calculate()
 model_test$calculate("lambda")
