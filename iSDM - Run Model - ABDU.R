@@ -160,7 +160,7 @@ inits <- list(
 )
 
 ### Load Model Code
-source("iSDM - Nimble Model - Mallard.R")
+source("iSDM - Model Code - ABDU.R")
 source("iSDM - ZIP Function.R")
 
 
