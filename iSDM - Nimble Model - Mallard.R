@@ -5,9 +5,10 @@ code <- nimbleCode({
   ### Grid Cell Occupancy/Abundance Intensity surface
   for(i in 1:n.cells){
     #Zero Inflated Poisson
-    cloglog(psi[i]) <- beta0.psi + inprod(beta.psi[1:5], grid.covs[i, 1:5]) #+ gamma.psi[i,s] 
-    lambda[i] <- exp(beta0.lambda + inprod(beta.lambda[1:5], grid.covs[i, 1:5])) # + gamma.lambda[i,s]
-    N[i] ~ dZIP(lambda[i], zeroProb = 1-psi[i])
+    cloglog(psi[i]) <- beta0.psi #+ inprod(beta.psi[1:5], grid.covs[i, 1:5]) #+ gamma.psi[i,s] 
+    log(lambda[i]) <- beta0.lambda # + inprod(beta.lambda[1:5], grid.covs[i, 1:5])) # + gamma.lambda[i,s]
+    psi.ZIP[i] <- 1-psi[i]
+    N[i] ~ dZIP(lambda[i], zeroProb = psi.ZIP[i])
   }
   
   beta0.psi ~ dnorm(0, sd = 10)
@@ -27,14 +28,14 @@ code <- nimbleCode({
   # gamma.lambda[1:n.cells] ~ dcar_normal(adj[1:nadj],weights[1:nadj],num[1:n.cells],spacetau.lambda)
   # 
   
-  ### BBS
-  for(j in 1:bbs.nsurvey){
-    E.bbs[j] <- alpha.bbs[1]*bbs.Nposid[j] + alpha.bbs[2]*bbs.Nseen[j]
-    p.bbs[j] <- 1 - (.5)^E.bbs[j]
-
-    y.bbs[j] ~ dbinom(size = N[grid.bbs[j]], prob = p.bbs[j])
-  }
-  for(i in 1:2){alpha.bbs[i] ~ T(dnorm(0,0.0001), 0,10000)}
+  # ### BBS
+  # for(j in 1:bbs.nsurvey){
+  #   E.bbs[j] <- alpha.bbs[1]*bbs.Nposid[j] + alpha.bbs[2]*bbs.Nseen[j]
+  #   p.bbs[j] <- 1 - (.5)^E.bbs[j]
+  # 
+  #   y.bbs[j] ~ dbinom(size = N[grid.bbs[j]], prob = p.bbs[j])
+  # }
+  # for(i in 1:2){alpha.bbs[i] ~ T(dnorm(0,0.0001), 0,10000)}
 
   
   ### BBL

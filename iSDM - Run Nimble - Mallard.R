@@ -4,16 +4,16 @@ lapply(c("nimble", "dplyr", "parallel", "coda", "MCMCvis"), require, character.o
 ### List of loaded data objects
 ### ebird.counts, ebird.covs, ebird.grid, ebird.nsurvey, ebird.nspecies, ebird.ncovs, #EBird
 ### bbs.counts, bbs.nspecies, bbs.nsurveys, bbs.nposid, bbs.nseen, bbs.grid, bbs.sp, #BBS
-### bbl.occ, bbl.covs, bbl.nsurveys, bbl.nspecies, bbl.ncovs, bbl.sp, #BBL
+### bbl.count, bbl.covs, bbl.nsurveys, bbl.nspecies, bbl.ncovs, bbl.sp, #BBL
 ### mws.counts, mws.covs, mws.gridid, mws.nsurveys, mws.nyears, mws.nspecies, mws.ncovs, mws.sp,#MWS
 ### cbc.count, cbc.covs, cbc.nsurveys, cbc.nspecies, cbc.ncovs, cbc.gridid, cbc.sp, #CBC
 ### grid.covs, ncovs.grid, ntotspecies, n.cells, adj, num, weights, nadj
 load(file = "iSDM_Nimble_Objects.R")
 
 ###Load Bird List
-bird.codes.all <- read.csv("./BirdCodes.csv")
-birds.use <- c("MALL", "ABDK", "CAGO", "BWTE", "AMWI", "NOPI", "GWTE", "GADW", "NSHO", "WODU", "GSGO", "GWFG")
-birds.codes <- bird.codes.all %>% filter(Alpha %in% birds.use)
+birds.use <- birds.use <- sort(c("MALL", "ABDK", "ABDU", "CAGO", "BWTE", "AMWI", "NOPI", 
+                                 "GWTE", "AGWT","GADW", "NSHO", "WODU", "GSGO", "GWFG",
+                                 "BLSC", "SUSC", "LTDU", "LESC"))
 
 ### Simplify to Mallard only (can adjust to whichever species you want to use)
 #EBird
@@ -26,8 +26,8 @@ bbs.counts <- bbs.counts[,colnum]
 bbs.nposid <- bbs.nposid[,colnum]
 
 #BBL
-colnum <- which(colnames(bbl.occ) == "MALL")
-bbl.occ <- bbl.occ[,colnum]
+colnum <- which(colnames(bbl.count) == "MALL")
+bbl.count <- bbl.count[,colnum]
 
 #CBC
 colnum <- which(colnames(cbc.count) == "MALL")
@@ -52,13 +52,13 @@ data <- list(
   # y.ebird = ebird.counts,
   # ebird.covs = ebird.covs,
 
-  #BBS
-  y.bbs = bbs.counts,
-  bbs.Nposid = bbs.nposid,
-  bbs.Nseen = bbs.nseen,
+  # #BBS
+  # y.bbs = bbs.counts,
+  # bbs.Nposid = bbs.nposid,
+  # bbs.Nseen = bbs.nseen,
 
   #BBL
-  y.bbl = bbl.occ,
+  y.bbl = bbl.count,
   bbl.covs = bbl.covs,
 # 
 #   #MWS
@@ -79,9 +79,9 @@ constants <- list(
   # ebird.nsurvey = ebird.nsurvey,
   # ebird.ncovs = ebird.ncovs,
 
-  #BBS
-  bbs.nsurvey = bbs.nsurveys,
-  grid.bbs = bbs.grid,
+  # #BBS
+  # bbs.nsurvey = bbs.nsurveys,
+  # grid.bbs = bbs.grid,
 
   #BBL
   bbl.nsurveys = bbl.nsurveys,
@@ -111,46 +111,31 @@ constants <- list(
 
 ### Initial Values
 N.max <- rep(1, n.cells)
-for(i in 1:length(bbs.grid)){
-  if(bbs.counts[i] > N.max[bbs.grid[i]]){
-    N.max[bbs.grid[i]] <- bbs.counts[i] + 1
+# for(i in 1:length(bbs.grid)){
+#   if(bbs.counts[i] > N.max[bbs.grid[i]]){
+#     N.max[bbs.grid[i]] <- bbs.counts[i] + 1
+#   }
+# }
+
+for(i in 1:length(bbl.count)){
+  if(bbl.count[i] >= N.max[i]){
+    N.max[i] <- bbl.count[i] + 1
   }
 }
 
-for(i in 1:length(bbl.occ)){
-  if(bbl.occ[i] > N.max[i]){
-    N.max[i] <- bbl.occ[i] + 1
-  }
-}
-
-# 
-# for(i in 1:length(ebird.grid)){ 
-#   if(z.init[ebird.grid[i]] == 0){
-#     z.init[ebird.grid[i]] <- ifelse(ebird.counts[i] > 0, 1, 0)
-#   }
-# }
-# 
-# 
-# for(i in 1:length(cbc.gridid)){ 
-#   if(z.init[cbc.gridid[i]] == 0){
-#     z.init[cbc.gridid[i]] <- ifelse(cbc.count[i] > 0, 1, 0)
-#   }
-# }
-# 
-# for(i in 1:length(mws.gridid)){ 
-#   if(z.init[mws.gridid[i]] == 0){
-#     z.init[mws.gridid[i]] <- ifelse(rowSums(mws.counts)[i] > 0, 1, 0)
-#   }
-# }
+psi.test <- length(bbl.count[bbl.count>0])/length(bbl.count)
+lambda.test <- mean(bbl.count+1)
 
 inits <- list(
-  N = N.max,
   beta.lambda = rep(0, ncovs.grid),
-  beta0.lambda = log(mean(N.max)),
+  beta0.lambda = log(lambda.test),
   beta.psi = rep(0, ncovs.grid),
-  beta0.psi = 0,
-  alpha.bbs = rep(1,2),
-  alpha.bbl = rep(1, bbl.ncovs)
+  beta0.psi = log(-log(1-psi.test)),
+  # alpha.bbs = rep(1,2),
+  alpha.bbl = rep(1, bbl.ncovs),
+  # psi = rep(psi.test, n.cells),
+  # lambda = rep(lambda.test,n.cells),
+  N = N.max
 )
 
 ### Load Model Code
@@ -165,10 +150,9 @@ model_test <- nimbleModel( code = code,
                            data =  data,
                            inits = inits,
                            calculate = F)
-model_test$simulate(c("psi", "lambda", "E.bbs", "p.bbs", "E.bbl", "p.bbl"))
+# model_test$simulate(c("E.bbl", "p.bbl"))
 model_test$initializeInfo()
 model_test$calculate()
-model_test$calculate("lambda")
 
 
 monitor.coeff <- c("beta0.psi", "beta.psi", "beta0.lambda", #"beta.lambda",

@@ -37,7 +37,9 @@ st_write(grid.surface, dsn = "./SamplingGrid.shp", delete_layer = T)
 
 ###List of species to track
 bird.codes.all <- read.csv("./BirdCodes.csv")
-birds.use <- c("MALL", "ABDK", "CAGO", "BWTE", "AMWI", "NOPI", "GWTE", "GADW", "NSHO", "WODU", "GSGO", "GWFG")
+birds.use <- sort(c("MALL", "ABDK", "ABDU", "CAGO", "BWTE", "AMWI", "NOPI", 
+                    "GWTE", "AGWT","GADW", "NSHO", "WODU", "GSGO", "GWFG",
+                    "BLSC", "SUSC", "LTDU", "LESC"))
 birds.codes <- bird.codes.all %>% filter(Alpha %in% birds.use)
 
 
@@ -246,9 +248,10 @@ bbl.count.raw <- do.call("rbind", bbl.list.data) %>%
 bbl.count.raw[is.na(bbl.count.raw)]<- 0
 
 #Site occupancy status
-bbl.occ <- bbl.count.raw %>% 
+bbl.count <- bbl.count.raw %>% 
   select(which(colnames(bbl.count.raw) %in% birds.use)) %>%
-  select(which(colSums(.) > 0))
+  select(which(colSums(.) > 0)) %>%
+  as.matrix()
 
 #Effort Covariates
 #Number of captures conducted within a grid cell
@@ -282,8 +285,8 @@ bbl.covs <- bbl.covs.df %>% select(-GridID) %>% as.matrix()
 
 
 #Nimble Indexing constants
-bbl.nspecies <- ncol(bbl.occ)
-bbl.nsurveys <- nrow(bbl.occ)
+bbl.nspecies <- ncol(bbl.count)
+bbl.nsurveys <- nrow(bbl.count)
 bbl.ncovs <- ncol(bbl.covs)
 
 
@@ -434,12 +437,12 @@ cbc.nsurveys <- nrow(cbc.count)
 
 ### Final Species List
 #full list of unique species across surveys
-final.species.list <- sort(unique(c(colnames(ebird.counts), colnames(bbs.counts), colnames(bbl.occ),
+final.species.list <- sort(unique(c(colnames(ebird.counts), colnames(bbs.counts), colnames(bbl.count),
          mws.counts.df$Alpha, colnames(cbc.count))))
 ntotspecies <- length(final.species.list)
 # match(colnames(ebird.counts), final.species.list) #1 to 1, so don't need to adjust indexing 
 bbs.sp <- match(colnames(bbs.counts), final.species.list)
-bbl.sp <- match(colnames(bbl.occ), final.species.list)
+bbl.sp <- match(colnames(bbl.count), final.species.list)
 mws.sp <- match(unique(mws.counts.df$Alpha),final.species.list)
 cbc.sp <- match(colnames(cbc.count), final.species.list)
 
@@ -470,7 +473,7 @@ ncovs.grid <-  ncol(grid.covs)
 setwd("./../")
 save(ebird.counts, ebird.covs, ebird.grid, ebird.nsurvey, ebird.nspecies, ebird.ncovs, #EBird
      bbs.counts, bbs.nspecies, bbs.nsurveys, bbs.nposid, bbs.nseen, bbs.grid, bbs.sp, #BBS
-     bbl.occ, bbl.covs, bbl.nsurveys, bbl.nspecies, bbl.ncovs, bbl.sp, #BBL
+     bbl.count, bbl.covs, bbl.nsurveys, bbl.nspecies, bbl.ncovs, bbl.sp, #BBL
      mws.counts, mws.covs, mws.gridid, mws.nsurveys, mws.nyears, mws.nspecies, mws.ncovs, mws.sp,#MWS
      cbc.count, cbc.covs, cbc.nsurveys, cbc.nspecies, cbc.ncovs, cbc.gridid, cbc.sp, #CBC
      grid.covs, ncovs.grid, ntotspecies, n.cells, adj, num, weights, nadj,
