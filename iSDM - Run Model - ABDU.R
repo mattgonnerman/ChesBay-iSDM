@@ -15,7 +15,7 @@ birds.use <- birds.use <- sort(c("MALL", "ABDK", "ABDU", "CAGO", "BWTE", "AMWI",
                                  "GWTE", "AGWT","GADW", "NSHO", "WODU", "GSGO", "GWFG",
                                  "BLSC", "SUSC", "LTDU", "LESC"))
 
-### Simplify to Mallard only (can adjust to whichever species you want to use)
+### Simplify to SPECIES OF INTEREST only (can adjust to whichever species you want to use)
 #EBird
 colnum <- which(colnames(ebird.counts) == "ABDU")
 ebird.counts <- ebird.counts[,colnum]
@@ -46,20 +46,29 @@ mws.counts <- read.csv("./MWS/MWS_ChesBay.csv") %>%
 mws.counts[is.na(mws.counts)] <- 0
 
 
+########################################################
+### SUBSET EBIRD FOR TESTS
+### CAN REMOVE FOR FINAL RUN
+ebl <- length(ebird.counts)
+Per <- .01 #percent to cut off of ebird
+eb.sub <- sort(sample(1:ebl, round(ebl*Per)))
+ebird.counts <- ebird.counts[eb.sub]
+ebird.covs <- ebird.covs[eb.sub,]
+ebird.grid <- ebird.grid[eb.sub]
+ebird.nsurvey <- length(eb.sub)
+########################################################
+
 ### Package Data for NIMBLE
 data <- list(
-  #EBird
-  y.ebird = ebird.counts,
-  ebird.covs = ebird.covs,
 
   #BBS
   y.bbs = bbs.counts,
   bbs.Nposid = bbs.nposid,
   bbs.Nseen = bbs.nseen,
-
-  # #BBL
-  # y.bbl = bbl.count,
-  # bbl.covs = bbl.covs,
+  
+  #EBird
+  y.ebird = ebird.counts,
+  ebird.covs = ebird.covs,
 
   #MWS
   y.mws = mws.counts,
@@ -68,24 +77,24 @@ data <- list(
   #CBC
   y.cbc = cbc.count,
   cbc.covs = cbc.covs,
+
+  # #BBL
+  # y.bbl = bbl.count,
+  # bbl.covs = bbl.covs,
   
   #Occupancy/Abundance
   grid.covs = grid.covs
 )
 
 constants <- list(
-  #EBird
-  grid.ebird = ebird.grid,
-  ebird.nsurvey = ebird.nsurvey,
-  ebird.ncovs = ebird.ncovs,
-
   #BBS
   bbs.nsurvey = bbs.nsurveys,
   grid.bbs = bbs.grid,
 
-  # #BBL
-  # bbl.nsurveys = bbl.nsurveys,
-  # bbl.ncovs = bbl.ncovs,
+  #EBird
+  grid.ebird = ebird.grid,
+  ebird.nsurvey = ebird.nsurvey,
+  ebird.ncovs = ebird.ncovs,
 
   #MWS
   mws.gridid = mws.gridid,
@@ -97,6 +106,10 @@ constants <- list(
   cbc.nsurveys = cbc.nsurveys,
   cbc.ncovs = cbc.ncovs,
   grid.cbc = cbc.gridid,
+
+  # #BBL
+  # bbl.nsurveys = bbl.nsurveys,
+  # bbl.ncovs = bbl.ncovs,
 
   # #dCAR
   # adj = adj,

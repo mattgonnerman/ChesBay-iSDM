@@ -36,33 +36,34 @@ code <- nimbleCode({
 
   #### EBird
   for(j in 1:ebird.nsurvey){
-    E.ebird[j] <- inprod(alpha.ebird[1:ebird.ncovs], ebird.covs[j,1:ebird.ncovs])
-    p.ebird[j] <- 1 - pow(.5,E.ebird[j])
+    E.ebird[j] <- inprod(gamma.ebird[1:ebird.ncovs], ebird.covs[j,1:ebird.ncovs])
+    p.ebird[j] <- 1 - (.5)^E.ebird[j]
 
     y.ebird[j] ~ dbinom(size = N[grid.ebird[j]], prob = p.ebird[j])
   }
-  for(i in 1:ebird.ncovs){alpha.ebird[i] ~  T(dnorm(0,0.0001), 0,10000)}
-
-  ### CBC
-  for(j in 1:cbc.nsurveys){
-    E.cbc[j] <- inprod(alpha.cbc[1:cbc.ncovs], cbc.covs[j,1:cbc.ncovs])
-    p.cbc[j] <- 1 - (.5)^E.cbc[j]
-
-    y.cbc[j] ~ dbinom(size = N[grid.cbc[j]], prob = p.cbc[j])
-  }
-  for(i in 1:cbc.ncovs){alpha.cbc[i] ~ T(dnorm(0,0.0001), 0,10000)}
+  for(i in 1:ebird.ncovs){gamma.ebird[i] ~  T(dnorm(0,0.0001), 0,10000)}
 
   ### MWS
   for(t in 1:mws.nyears){
     for(j in 1:mws.nsurveys){
-      E.mws[j,t] <- inprod(alpha.mws[1:mws.ncovs], mws.covs[j,t,1:mws.ncovs])
+      E.mws[j,t] <- inprod(gamma.mws[1:mws.ncovs], mws.covs[j,t,1:mws.ncovs])
       p.mws[j,t] <- 1 - (.5)^E.mws[j,t]
 
       y.mws[j,t] ~ dbinom(size = N[mws.gridid[j]], prob = p.mws[j,t])
     }
   }
-  for(i in 1:mws.ncovs){alpha.mws[i] ~ T(dnorm(0,0.0001), 0,10000)}
+  for(i in 1:mws.ncovs){gamma.mws[i] ~ T(dnorm(0,0.0001), 0,10000)}
   
+  ### CBC
+  for(j in 1:cbc.nsurveys){
+    E.cbc[j] <- inprod(gamma.cbc[1:cbc.ncovs], cbc.covs[j,1:cbc.ncovs])
+    p.cbc[j] <- 1 - (.5)^E.cbc[j]
+
+    y.cbc[j] ~ dbinom(size = N[grid.cbc[j]], prob = p.cbc[j])
+  }
+  for(i in 1:cbc.ncovs){gamma.cbc[i] ~ T(dnorm(0,0.0001), 0,10000)}
+
+
   # ### BBL
   # for(j in 1:bbl.nsurveys){
   #   E.bbl[j] <- inprod(alpha.bbl[1:bbl.ncovs], bbl.covs[j,1:bbl.ncovs])
