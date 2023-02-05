@@ -2,8 +2,8 @@ code <- nimbleCode({
   ### Grid Cell Occupancy/Abundance Intensity surface
   for(i in 1:n.cells){
     #Zero Inflated Poisson
-    cloglog(psi[i]) <- alpha0 + inprod(alpha[1:ncovs.grid], grid.covs[i, 1:ncovs.grid])
-    log(lambda[i]) <- beta0 + inprod(beta[1:ncovs.grid], grid.covs[i, 1:ncovs.grid])
+    cloglog(psi[i]) <- alpha0 + inprod(alpha[1:ncovs.grid], grid.covs[i, 1:ncovs.grid]) + alpha.car[i]
+    log(lambda[i]) <- beta0 + inprod(beta[1:ncovs.grid], grid.covs[i, 1:ncovs.grid]) + beta.car[i]
     
     N[i] ~ dZIP(lambda[i], zeroProb = 1-psi[i])
   }
@@ -15,14 +15,14 @@ code <- nimbleCode({
     beta[i] ~ dnorm(0, sd = 10)
   }
   
-  # #Conditional Auto-Regressive
-  # #https://r-nimble.org/html_manual/cha-spatial.html
-  # #https://ecosystems.psu.edu/research/labs/walter-lab/manual/chapter-9-spatial-epidemiology-in-winbugs/link-to-pdf
-  # spacetau.psi ~ dgamma(0.001, 0.001)
-  # gamma.psi[1:n.cells] ~ dcar_normal(adj = adj[1:nadj], weights = weights[1:nadj], num = num[1:n.cells], tau = spacetau.psi)
-  # 
-  # spacetau.lambda ~ dgamma(0.001, 0.001)
-  # gamma.lambda[1:n.cells] ~ dcar_normal(adj[1:nadj],weights[1:nadj],num[1:n.cells],spacetau.lambda)
+  #Conditional Auto-Regressive
+  #https://r-nimble.org/html_manual/cha-spatial.html
+  #https://ecosystems.psu.edu/research/labs/walter-lab/manual/chapter-9-spatial-epidemiology-in-winbugs/link-to-pdf
+  tau.alpha ~ dgamma(0.001, 0.001)
+  alpha.car[1:n.cells] ~ dcar_normal(adj = adj[1:nadj], weights = weights[1:nadj], num = num[1:n.cells], tau = tau.alpha)
+
+  tau.beta ~ dgamma(0.001, 0.001)
+  beta.car[1:n.cells] ~ dcar_normal(adj[1:nadj],weights[1:nadj],num[1:n.cells], tau.beta)
 
   
   ### BBS

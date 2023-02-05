@@ -46,17 +46,18 @@ mws.counts <- read.csv("./MWS/MWS_ChesBay.csv") %>%
 mws.counts[is.na(mws.counts)] <- 0
 
 
-########################################################
-### SUBSET EBIRD FOR TESTS
-### CAN REMOVE FOR FINAL RUN
-ebl <- length(ebird.counts)
-Per <- .01 #percent to cut off of ebird
-eb.sub <- sort(sample(1:ebl, round(ebl*Per)))
-ebird.counts <- ebird.counts[eb.sub]
-ebird.covs <- ebird.covs[eb.sub,]
-ebird.grid <- ebird.grid[eb.sub]
-ebird.nsurvey <- length(eb.sub)
-########################################################
+# ########################################################
+# ### SUBSET EBIRD FOR TESTS
+# ### CAN REMOVE FOR FINAL RUN
+# ebl <- length(ebird.counts)
+# Per <- .10 #percent to cut off of ebird
+# eb.sub <- sort(sample(1:ebl, floor(ebl*Per)))
+# eb.sub1 <- max(eb.sub)
+# ebird.counts <- ebird.counts[eb.sub]
+# ebird.covs <- ebird.covs[eb.sub,]
+# ebird.grid <- ebird.grid[eb.sub]
+# ebird.nsurvey <- length(eb.sub)
+# ########################################################
 
 ### Package Data for NIMBLE
 data <- list(
@@ -111,11 +112,11 @@ constants <- list(
   # bbl.nsurveys = bbl.nsurveys,
   # bbl.ncovs = bbl.ncovs,
 
-  # #dCAR
-  # adj = adj,
-  # weights = weights,
-  # num = num,
-  # nadj = nadj,
+  #dCAR
+  adj = adj,
+  weights = weights,
+  num = num,
+  nadj = nadj,
   
   #Occupancy/Abundance
   ncovs.grid = ncovs.grid,
@@ -161,10 +162,14 @@ cbc.covmax <- colMaxs(cbc.covs)
 mws.covmax <- c(max(mws.covs[,,1]),max(mws.covs[,,2]))
 
 inits <- list(
-  beta = rep(0, ncovs.grid),
   beta0 = log(mean(N.max)),
-  alpha = rep(0, ncovs.grid),
+  beta = rep(0, ncovs.grid),
+  beta.car = rep(0, n.cells),
+  tau.beta = 1,
   alpha0 = logit(.5),
+  alpha = rep(0, ncovs.grid),
+  alpha.car = rep(0, n.cells),
+  tau.alpha = 1,
   gamma.bbs = gammainit(bbs.covmax),
   gamma.ebird = gammainit(ebird.covmax),
   gamma.cbc = gammainit(cbc.covmax),
@@ -176,40 +181,44 @@ inits <- list(
 source("iSDM - Model Code - ABDU.R")
 source("iSDM - ZIP Function.R")
 
+## DONT NEED TO RUN ONCE ALL VARIABLES ARE INITIALIZED
+## AND CALCULATE RETURNS NON -INF/NA VALUE
+## Check model before fully running
+## Looking for a non-NA/-Inf value returned from calculate()
+# model_test <- nimbleModel( code = code,
+#                            constants = constants,
+#                            data =  data,
+#                            inits = inits,
+#                            calculate = F)
+# model_test$simulate(c("E.ebird", "p.ebird", "E.bbs", "p.bbs",
+#                       "E.cbc", "p.cbc", "E.mws", "p.mws",
+#                       "psi", "lambda", "lifted_d1_minus_psi_oBi_cB_L4",
+#                       "lifted_CAR_calcNumIslands_oPadj_oB1to21578_cB_comma_num_oB1to3680_cB_cP")) 
+# ### When the above throws an error, you probably changed the grid size and need to rename this
+# 
+# 
+# model_test$initializeInfo()
+# model_test$calculate()
 
-### Check model before fully running
-#Looking for a non-NA value returned from calculate()
-model_test <- nimbleModel( code = code,
-                           constants = constants,
-                           data =  data,
-                           inits = inits,
-                           calculate = F)
-model_test$simulate(c("E.ebird", "p.ebird", "E.bbs", "p.bbs",
-                      "E.cbc", "p.cbc", "E.mws", "p.mws",
-                      "psi", "lambda"))
-model_test$initializeInfo()
-model_test$calculate()
 
 
-monitor.coeff <- c("beta0.psi", "beta.psi", "beta0.lambda", #"beta.lambda",
-                   "alpha.bbs", "alpha.bbl")
+# ### Assess issues
+# wrong.bbs <- which(is.infinite(model_test$logProb_y.bbs))
+# wrong.ebird <- which(is.infinite(model_test$logProb_y.ebird))
+# wrong.cbc <- which(is.infinite(model_test$logProb_y.cbc))
+# wrong.mws <- which(is.infinite(model_test$logProb_y.mws))
+# 
+# model_test$y.ebird[wrong.ebird]
+# model_test$p.ebird[wrong.ebird]
+# model_test$ebird.covs[wrong.ebird,]
+# ###
+
+
+#Set the paramaters to monitor
+monitor.coeff <- c("alpha0", "alpha", "alpha.car",
+                   "beta0", "beta", "beta.car",
+                   "gamma.ebird", "gamma.bbs", "gamma.cbc", "gamma.mws")
 monitor.est <- c("psi", "lambda")
-
-
-mcmcConf <-  configureMCMC( model_test,   monitors =  monitor.est, monitors2 = monitor.coeff)
-mcmc     <-  buildMCMC( mcmcConf)
-Cmodel   <- compileNimble(model_test)
-Cmcmc    <- compileNimble(mcmc)
-samplesList <- runMCMC(Cmcmc,nburnin = 5000, niter = 10000, thin = 5, thin2 = 5)
-
-samples1 <- list(chain1 =  samplesList$samples)
-mcmcList1 <- as.mcmc.list(lapply(samples1, mcmc))
-samples2 <- list(chain1 =  samplesList$samples2)
-mcmcList2 <- as.mcmc.list(lapply(samples2, mcmc))
-
-MCMCsummary(mcmcList2, 'alpha.bbs')
-
-
 
 # Parallel Processing Setup
 rm(out.full.predict)
@@ -218,27 +227,27 @@ start_time
 nc <- detectCores()/2    # number of chains
 cl<-makeCluster(nc,timeout=5184000) #Start 3 parallel processing clusters
 
-clusterExport(cl, c("code", "inits", "data", "constants", "monitor.coeff", "monitor.est")) #identify what is to be exported to each cluster
+clusterExport(cl, c("code", "inits", "data", "constants", "monitor.coeff", "monitor.est", "rZIP", "dZIP")) #identify what is to be exported to each cluster
 
 out.full.predict <- clusterEvalQ(cl, {
   require(nimble)
   require(coda)
   
+  registerDistributions(list(
+    dZIP = list(
+      BUGSdist = "dZIP(lambda, zeroProb)",
+      discrete = TRUE,
+      range = c(0, Inf),
+      types = c('value = integer()', 'lambda = double()', 'zeroProb = double()')
+    )))
+  
   model_test <- nimbleModel( code = code,
                              constants = constants,
                              data =  data,
                              inits = inits )
-  model_test$simulate(c(
-    # "E.ebird", "p.ebird", "alpha.ebird", "sig.alpha.ebird", "mu.alpha.ebird",
-    # "E.bbs", "p.bbs", "alpha.bbs", "sig.alpha.bbs", "mu.alpha.bbs",
-    "E.bbl", "p.bbl", "alpha.bbl", "sig.alpha.bbl", "mu.alpha.bbl",
-    # "E.mws", "p.mws", "alpha.mws", "sig.alpha.mws", "mu.alpha.mws",
-    # "E.cbc", "p.cbc", "alpha.cbc", "sig.alpha.cbc", "mu.alpha.cbc"
-    "psi", "z", "lambda", "N", "r.nb", "p.nb",
-    "gamma.psi", "spacetau.psi", #"gamma.lambda", "spacetau.lambda",
-    "beta0.psi", "beta.psi", "mu.beta.psi", "sig.beta.psi",
-    "beta0.lambda", "beta.lambda", "mu.beta.lambda", "sig.beta.lambda"
-  ))
+  model_test$simulate(c("E.ebird", "p.ebird", "E.bbs", "p.bbs",
+                        "E.cbc", "p.cbc", "E.mws", "p.mws",
+                        "psi", "lambda", "lifted_d1_minus_psi_oBi_cB_L4"))
   model_test$initializeInfo()
   model_test$calculate()
   
@@ -255,3 +264,23 @@ stopCluster(cl)
 #Find model runtime
 end_time <- Sys.time()
 end_time - start_time
+
+samples.param <- list(chain1 =  out.full.predict[[1]]$samples,
+                 chain2 =  out.full.predict[[2]]$samples,
+                 chain3 =  out.full.predict[[3]]$samples)
+
+mcmcList.param <- as.mcmc.list(lapply(samples.param, mcmc))
+
+samples.coef <- list(chain1 =  out.full.predict[[1]]$samples2,
+                 chain2 =  out.full.predict[[2]]$samples2,
+                 chain3 =  out.full.predict[[3]]$samples2)
+
+mcmcList.coef <- as.mcmc.list(lapply(samples.coef, mcmc))
+
+#Save Outputs as file
+abdu.files <- list(mcmcList.param, mcmcList.coef, code, data)
+save(abdu.files, file = "./Output/iSDM_ABDU.rdata")
+
+
+MCMCtrace(mcmcList.param, filename = "./Output/TraceOut - Estimates.pdf")
+MCMCtrace(mcmcList.coef, filename = "./Output/TraceOut - Covariates.pdf")

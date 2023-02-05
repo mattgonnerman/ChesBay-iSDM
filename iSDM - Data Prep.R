@@ -101,11 +101,14 @@ ebird.counts <- ebird.counts.df %>% select(-ID) %>% as.matrix()
 #Effort Covariates
 ebird.covs.df <- ebird.full.df %>% select(ID, Minutes, DistKM, NObs)  %>%
   distinct() %>%
-  mutate(Minutes = ifelse(is.na(Minutes), 0, Minutes),
+  mutate(Minutes = ifelse(is.na(Minutes), 1, Minutes),
          DistKM = ifelse(is.na(DistKM), 0, DistKM), 
-         NObs = ifelse(is.na(NObs), 0, NObs)) 
+         NObs = ifelse(is.na(NObs), 1, NObs)) 
 ebird.covs <- ebird.covs.df%>%
   select(-ID) %>% as.matrix()
+
+#Check that the rows are correctly aligned.
+which(ebird.covs.df$ID != ebird.covs.df$ID)
 
 #Corresponding grid ID for each survey location
 ebird.grid.df <- ebird.full.df %>% select(ID, latitude, longitude) %>%

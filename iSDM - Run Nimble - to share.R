@@ -72,39 +72,39 @@ model_test$initializeInfo()
 model_test$calculate()
 
 
-# ### Assess issues
-# wrong.bbl <- which(is.infinite(model_test$logProb_y.bbl))
-# wrong.bbs <- which(is.infinite(model_test$logProb_y.bbs))
-# 
-# bbs.counts[wrong.bbs]
-# 
-# model_test$N[bbs.grid[wrong.bbs]] > model_test$y.bbs[wrong.bbs]
-# model_test$N[wrong.bbl] > model_test$y.bbl[wrong.bbl]
-# 
-# 
-# bbs.grid.wrong <- sort(unique(bbs.grid[wrong.bbs]))
-# 
-# bbs.bbl <- sort(unique(bbs.grid.wrong[which(bbs.grid.wrong %in% wrong.bbl)]))
-# bbs.only <- sort(unique(bbs.grid.wrong[which(!(bbs.grid.wrong %in% wrong.bbl))]))
-# bbl.only <- sort(unique(wrong.bbl[which(!(wrong.bbl %in% bbs.grid.wrong))]))
-# 
-# summary(model_test$N[which(1:n.cells %in% c(bbs.only,bbl.only, bbs.bbl))])
-# summary(model_test$N[which(!(1:n.cells %in% c(bbs.only,bbl.only, bbs.bbl)))])
-# 
-# dZIP(2000, lambda = model_test$lambda[1], zeroProb = model_test$psi[1])
-# 
-# model_test$logProb_alpha0
-# 
-# which(!(model_test$N > model_test$y.bbl))
-# which(!(model_test$N[bbs.grid] > model_test$y.bbs))
-# 
-# exp(model_test$alpha0)/(1+exp(model_test$alpha0))
-# 
-# 
-# model_test$p.bbl[wrong.bbl]
-# which(model_test$p.bbl != 1) == wrong.bbl
-# 
-# model_test$bbl.covs[wrong.bbl,]
+### Assess issues
+wrong.bbl <- which(is.infinite(model_test$logProb_y.bbl))
+wrong.bbs <- which(is.infinite(model_test$logProb_y.bbs))
+
+bbs.counts[wrong.bbs]
+
+model_test$N[bbs.grid[wrong.bbs]] > model_test$y.bbs[wrong.bbs]
+model_test$N[wrong.bbl] > model_test$y.bbl[wrong.bbl]
+
+
+bbs.grid.wrong <- sort(unique(bbs.grid[wrong.bbs]))
+
+bbs.bbl <- sort(unique(bbs.grid.wrong[which(bbs.grid.wrong %in% wrong.bbl)]))
+bbs.only <- sort(unique(bbs.grid.wrong[which(!(bbs.grid.wrong %in% wrong.bbl))]))
+bbl.only <- sort(unique(wrong.bbl[which(!(wrong.bbl %in% bbs.grid.wrong))]))
+
+summary(model_test$N[which(1:n.cells %in% c(bbs.only,bbl.only, bbs.bbl))])
+summary(model_test$N[which(!(1:n.cells %in% c(bbs.only,bbl.only, bbs.bbl)))])
+
+dZIP(2000, lambda = model_test$lambda[1], zeroProb = model_test$psi[1])
+
+model_test$logProb_alpha0
+
+which(!(model_test$N > model_test$y.bbl))
+which(!(model_test$N[bbs.grid] > model_test$y.bbs))
+
+exp(model_test$alpha0)/(1+exp(model_test$alpha0))
+
+
+model_test$p.bbl[wrong.bbl]
+which(model_test$p.bbl != 1) == wrong.bbl
+
+model_test$bbl.covs[wrong.bbl,]
 
 
 #########################################
