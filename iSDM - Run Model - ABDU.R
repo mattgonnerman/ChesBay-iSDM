@@ -10,8 +10,8 @@ lapply(c("nimble", "dplyr", "parallel", "coda", "MCMCvis", "matrixStats"), requi
 ### grid.covs, ncovs.grid, ntotspecies, n.cells, adj, num, weights, nadj
 load(file = "iSDM_Nimble_Objects.R")
 
-###Load Bird List
-birds.use <- birds.use <- sort(c("MALL", "ABDK", "ABDU", "CAGO", "BWTE", "AMWI", "NOPI", 
+###Bird List
+birds.use <- sort(c("MALL", "ABDK", "ABDU", "CAGO", "BWTE", "AMWI", "NOPI", 
                                  "GWTE", "AGWT","GADW", "NSHO", "WODU", "GSGO", "GWFG",
                                  "BLSC", "SUSC", "LTDU", "LESC"))
 
@@ -181,24 +181,24 @@ inits <- list(
 source("iSDM - Model Code - ABDU.R")
 source("iSDM - ZIP Function.R")
 
-## DONT NEED TO RUN ONCE ALL VARIABLES ARE INITIALIZED
-## AND CALCULATE RETURNS NON -INF/NA VALUE
-## Check model before fully running
-## Looking for a non-NA/-Inf value returned from calculate()
-# model_test <- nimbleModel( code = code,
-#                            constants = constants,
-#                            data =  data,
-#                            inits = inits,
-#                            calculate = F)
-# model_test$simulate(c("E.ebird", "p.ebird", "E.bbs", "p.bbs",
-#                       "E.cbc", "p.cbc", "E.mws", "p.mws",
-#                       "psi", "lambda", "lifted_d1_minus_psi_oBi_cB_L4",
-#                       "lifted_CAR_calcNumIslands_oPadj_oB1to21578_cB_comma_num_oB1to3680_cB_cP")) 
-# ### When the above throws an error, you probably changed the grid size and need to rename this
-# 
-# 
-# model_test$initializeInfo()
-# model_test$calculate()
+# DONT NEED TO RUN ONCE ALL VARIABLES ARE INITIALIZED
+# AND CALCULATE RETURNS NON -INF/NA VALUE
+# Check model before fully running
+# Looking for a non-NA/-Inf value returned from calculate()
+model_test <- nimbleModel( code = code,
+                           constants = constants,
+                           data =  data,
+                           inits = inits,
+                           calculate = F)
+model_test$simulate(c("E.ebird", "p.ebird", "E.bbs", "p.bbs",
+                      "E.cbc", "p.cbc", "E.mws", "p.mws",
+                      "psi", "lambda", "lifted_d1_minus_psi_oBi_cB_L4",
+                      "lifted_CAR_calcNumIslands_oPadj_oB1to21578_cB_comma_num_oB1to3680_cB_cP"))
+### When the above throws an error, you probably changed the grid size and need to rename this
+
+
+model_test$initializeInfo()
+model_test$calculate()
 
 
 

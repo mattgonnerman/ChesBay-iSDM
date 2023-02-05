@@ -87,29 +87,6 @@ ebird.full.df <- do.call("rbind", ebird.raw.list) %>%
   slice(1L) %>% #Some surveys (~6000) have two locations for a single checklist because it spanned two states. Just taking the first location for now
   ungroup()
 
-#Bird count data
-ebird.counts.df <- ebird.full.df %>%
-  select(ID, Scientific, Count) %>%
-  mutate(Count = as.numeric(ifelse(Count == "X", "0", Count))) %>%
-  merge(., birds.codes %>% select(Alpha, Scientific), by = "Scientific", all.x = T) %>%
-  select(-Scientific) %>%
-  arrange(Alpha) %>%
-  pivot_wider(values_from = "Count", names_from = "Alpha", values_fill = 0) %>%
-  arrange(ID)
-ebird.counts <- ebird.counts.df %>% select(-ID) %>% as.matrix()
-
-#Effort Covariates
-ebird.covs.df <- ebird.full.df %>% select(ID, Minutes, DistKM, NObs)  %>%
-  distinct() %>%
-  mutate(Minutes = ifelse(is.na(Minutes), 1, Minutes),
-         DistKM = ifelse(is.na(DistKM), 0, DistKM), 
-         NObs = ifelse(is.na(NObs), 1, NObs)) 
-ebird.covs <- ebird.covs.df%>%
-  select(-ID) %>% as.matrix()
-
-#Check that the rows are correctly aligned.
-which(ebird.covs.df$ID != ebird.covs.df$ID)
-
 #Corresponding grid ID for each survey location
 ebird.grid.df <- ebird.full.df %>% select(ID, latitude, longitude) %>%
   distinct() %>%
@@ -122,6 +99,33 @@ ebird.grid.df <- ebird.full.df %>% select(ID, latitude, longitude) %>%
   arrange(ID) %>%
   st_drop_geometry()
 ebird.grid <- ebird.grid.df$GridID
+
+#Bird count data
+ebird.counts.df <- ebird.full.df %>%
+  select(ID, Scientific, Count) %>%
+  filter(ID %in% ebird.grid.df$ID) %>%
+  mutate(Count = as.numeric(ifelse(Count == "X", "0", Count))) %>%
+  merge(., birds.codes %>% select(Alpha, Scientific), by = "Scientific", all.x = T) %>%
+  select(-Scientific) %>%
+  arrange(Alpha) %>%
+  pivot_wider(values_from = "Count", names_from = "Alpha", values_fill = 0) %>%
+  arrange(ID)
+ebird.counts <- ebird.counts.df %>% select(-ID) %>% as.matrix()
+
+#Effort Covariates
+ebird.covs.df <- ebird.full.df %>% select(ID, Minutes, DistKM, NObs)  %>%
+  filter(ID %in% ebird.grid.df$ID) %>%
+  distinct() %>%
+  mutate(Minutes = ifelse(is.na(Minutes), 1, Minutes),
+         DistKM = ifelse(is.na(DistKM), 0, DistKM), 
+         NObs = ifelse(is.na(NObs), 1, NObs)) 
+ebird.covs <- ebird.covs.df%>%
+  select(-ID) %>% as.matrix()
+
+#Check that the rows are correctly aligned.
+which(ebird.counts.df$ID != ebird.covs.df$ID)
+
+
 
 #Indexing constants for NIMBLE
 ebird.nsurvey <- nrow(ebird.counts)
