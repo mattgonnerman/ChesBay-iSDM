@@ -1,0 +1,505 @@
+---
+title: "ChesBay iSDM"
+author: "Matt Gonnerman"
+date: "2023-06-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#Load relevant packages
+lapply(c("dplyr", "sf", "lubridate", "INLA", "ggplot2", "fields"), require, character.only =T)
+
+#Set Working Directory
+setwd("C:/Users/mgonnerman/Box/Prosser_USGS/Matt Projects/ChesBay iSDM/") 
+
+#Clear Environment
+rm(list = ls())
+```
+
+## Objective
+Create an integrated species distribution model (iSDM) for relevant waterfowl species. Model outputs are intended for use in HPAI risk modeling. We will use a combination of structured and opportunistics surveys, including EBird, Breeding Bird Survey (BBS), Bird Banding Lab (BBL), Christmas Bird Count (CBC), and Midwinter Waterfowl Survey (MWS).
+
+## Modeling Approach
+We will follow a point process iSDM approach where we estimate an intensity surface using regression models in INLA. All surveys are reduced to a single point location.
+
+## Previous iSDM Modeling Publications
+### Overviews, Background, and Tutorials
+[Isaac et al. 2020 - Data integration for large-scale models of species distribution](https://doi.org/10.1016/j.tree.2019.08.006): More introductory breakdown of state space and point process approaches, with lots of examples from other publications.
+
+[Ahmad Suhaimi et al. 2021](https://doi.org/10.1111/ddi.13255) ([Code]( https://github.com/NERC-CEH/IDM_comparisons/blob/master/Run%20models%20joint.R)): Demonstration of a joint modeling approach integrating PO and PA point data. 
+
+[Simpson et al. 2016 - Going off grid: computationally efficient inference for log-Gaussian Cox processes](https://doi.org/10.1093/biomet/asv064): Background paper describing construction of integration points from discretizing study area into triangles.
+
+[John Humphrey's INLA SDM Code](https://rpubs.com/JMHumphreys/BWTE1)
+
+[N-Mixture Approach in INLA](https://www.jstatsoft.org/article/view/v095i02)
+[N-Mixture Apporach in INLA 2](https://arxiv.org/pdf/1705.01581.pdf)
+
+[Illian et al. 2012 - Using INLA to fit a complex point process model with temporally varying effects - a case study](https://eprints.gla.ac.uk/199441/)
+
+[Joint Modeling in INLA](https://becarioprecario.bitbucket.io/spde-gitbook/ch-manipula.html#sec:me)
+
+### State Space
+[Zulian et al. 2021 - Integrating citizen-science and planned-survey data improves species distribution estimates](https://doi.org/10.1111/ddi.13416): Original approach. Gridded surface with detection error estimated for each survey. Issues account for the spatial autocorrelation in data DCAR or SPP didn't work. Switching to point process approach.
+
+### Point Process
+[Adde et al. 2021 - Integrated modeling of waterfowl distribution in western Canada using aerial survey and citizen science (eBird) data](https://doi.org/10.1002/ecs2.3790): eBird and Aerial Survey data. 
+
+[Dambly et al. 2023 - Integrated species distribution models fitted in INLA are sensitive to mesh parameterisation](https://doi.org/10.1111/ecog.06391): Structured mobile acoustic survey along transects with counts at 12 points along transect. Reduced to PA as counts likely reflect bat activity, a combination of abundance and time spent in the area). Also if there is a risk of counting the same animal twice. [CODE](https://github.com/LeaDambly/IM_serotine/tree/main/02_code)
+
+[Paradinas et al. 2023 - Combining fishery data through integrated species distribution models](https://doi.org/10.1093/icesjms/fsad069): Fisheries iSDM. **Discussion of weighting datasets so that larger datasets don't swamp smaller ones.** [CODE](https://oup.silverchair-cdn.com/oup/backfile/Content_public/Journal/icesjms/PAP/10.1093_icesjms_fsad069/1/fsad069_supplemental_file.pdf?Expires=1689776238&Signature=d8EHCTlAnqoVfaGTsXjFXMZQtfE05t~VFZDYTCKPH23yTpGfuGMXdJCgDYniD9zTTy9ptZcM8fGrKDhLaQN9gajU~SZqFrn9WgQUy-a59p8BWPqkSSFWXLw2N0AaavTOo-dVsRjDS8~OmibC-FbXGf7b-Ask3ABUlCbgj5FB7-msc4tz6YAlbCRRO5cUyLtl7XTlBl6142i3XN2sqVVG-rYsxB4gEof-Mb2GtVu3D125OfTMnQu8Oa0KmZouXEmj2ZYjleQx-lWFQ4NTkmEPqOa-zJAj8e533aW5uEl6wtepUM9t~mloaa7bF~xi3xNBp-PO2mThxkYmmbB7YaTIFQ__&Key-Pair-Id=APKAIE5G5CRDK6RD3PGA)
+
+[Morera-Pujol et al. 2022 - Bayesian species distribution models integrate presence-only and presence–absence data to predict deer distribution and relative abundance](https://doi.org/10.1111/ecog.06451): Deer iSDM. 3 PA and 3 PO surveys each. 
+
+
+## Loading Data
+First we will define our study area and identify the species of interest (we are focusing on waterfowl species within this analysis).
+
+```{r}
+#Study Area
+studyarea <- st_read("Data/StudyArea.shp") %>%
+  st_transform(4326)
+
+birds.use <- sort(c("MALL", "ABDK", "ABDU", "CAGO", "BWTE", "AMWI", "NOPI", 
+                    "GWTE", "AGWT","GADW", "NSHO", "WODU", "GSGO", "GWFG",
+                    "BLSC", "SUSC", "LTDU", "LESC", "RUDU"))
+```
+
+
+
+Our first job is to bring in the survey data and make sure that it is in the correct format for the model. See "Data Prep" code for how data was downloaded and formatted initially.
+
+We will subset to black ducks, just so we are working with a single specoes th
+```{r}
+#Count Data
+ebird.data <- read.csv("Data/EBird_Counts.csv")
+bbs.data <- read.csv("Data/BBS_Counts.csv")
+bbl.data <- read.csv("Data/BBL_Counts.csv")
+mws.data <- read.csv("Data/MWS_Counts.csv")
+cbc.data <- read.csv("Data/CBC_Counts.csv")
+```
+
+**EBird** - Opportunistic counts throughout year. "Because they are prone to high sampling biases and absences cannot be confidently assessed, we treated eBird records as presence-only data" -[Adde et al. 2021](https://doi.org/10.1002/ecs2.3790).
+
+[Zulian et al. 2021](https://doi.org/10.1111/ddi.13416) Treat as counts.
+
+**BBS** - Structured point count surveys, early June. 50 sites along a given transect, adjusted to include no observations during a survey (0).
+
+**BBL** - Opportunistic counts covering majority of year, but mostly in fall.
+
+**CBC** - Structured point count surveys, late December. Available as counts, adjusted to include no observations during a survey (0)
+
+**MWS** - Available as counts, but should probably treat as PA data, considering we have little information on where exactly observations occurred. Only have polygon or line shapefiles available, we do not have access to point locations for a given observation (don't exist?). Instead, I used the st_point_on_surface tool to get a point location. Alternatively, after discussions with Jeff, may wish to switch to midpoint of the coast, as apparently surveys stuck very close to the shoreline. See [Adde et al. 2021](https://doi.org/10.1002/ecs2.3790) for an example of aerial surveys combined with eBird data. 
+
+Here is a breakdown of the observations for each species by survey. These counts are based on presences only, not count data.
+```{r echo = F}
+obs.spp.survey <- rbind(ebird.data %>% filter(Count > 0) %>% select(Survey, AOU),
+                        bbs.data %>% filter(Count > 0) %>% select(Survey, AOU),
+                        bbl.data %>% filter(Count > 0) %>% select(Survey, AOU),
+                        mws.data %>% filter(Count > 0) %>% select(Survey, AOU),
+                        cbc.data %>% filter(Count > 0) %>% select(Survey, AOU)) %>%
+  group_by(Survey, AOU) %>% summarize(Count = n()) %>%
+  arrange(AOU) 
+
+obs.spp.survey %>%
+  tidyr::pivot_wider(names_from = "AOU", values_from = "Count")
+
+```
+And here is a look at the temporal distribution of our observations for each survey/species combination. 
+```{r echo=F}
+ebird.td <- ebird.data %>% select(Survey, AOU, Date) %>%
+  mutate(Date = as.Date(Date)) %>%
+  mutate(YDay = yday(Date)) 
+
+bbs.td <- bbs.data %>% select(Survey, AOU, Date, Count) %>%
+  mutate(Date = as.Date(Date)) %>%
+  mutate(YDay = yday(Date)) %>%
+  filter(Count > 0) %>% select(-Count)
+
+bbl.td <- bbl.data %>% select(Survey, AOU, Date) %>%
+  mutate(Date = as.Date(Date)) %>%
+  mutate(YDay = yday(Date), Survey = "BBL")
+
+mws.td <- mws.data %>% select(Survey, AOU, Date, Count) %>%
+  mutate(Date = as.Date(Date)) %>%
+  mutate(YDay = yday(Date)) %>%
+  filter(Count > 0) %>% select(-Count)
+
+cbc.td <- cbc.data %>% select(Survey, AOU, Date, Count) %>%
+  mutate(Date = as.Date(Date)) %>%
+  mutate(YDay = yday(Date)) %>%
+  filter(Count > 0) %>% select(-Count)
+
+all.td <-rbind(ebird.td, bbs.td, bbl.td, mws.td, cbc.td)
+
+ggplot(data = all.td, aes(x=YDay, color=Survey, fill=Survey)) +
+  geom_density(alpha=0.6, position = "stack") +
+  facet_wrap(~AOU, nrow = 3) +
+  labs(x = "Ordinal Day of Year", "Relative Density") +
+  theme(legend.position = "bottom")
+```
+
+##Subset to Single Species
+We are producing species specific models, so lets work with ABDU to get a model working
+```{r}
+ebird.data <- ebird.data %>% filter(AOU == "ABDU")
+bbs.data <- bbs.data %>% filter(AOU == "ABDU")
+bbl.data <- bbl.data %>% filter(AOU == "ABDU")
+cbc.data <- cbc.data %>% filter(AOU == "ABDU")
+mws.data <- mws.data %>% filter(AOU == "ABDU")
+```
+
+
+## Detection/Effort/Bias Covariates
+While we will not be explicitly estimating detection, we can include covariates related to the surveys to account for differences in sampling effort. Additionally, we will also include a secondary spatial field unique to each opportunistic survey, which will account for the uneven sampling across an area (see thinned point process comments).
+
+**EBird** - Number of observers (NObs), amount of time surveying (Minutes), distance covered in KM (DistKM).
+
+**BBS** - Number of stops where the species of interest was observed along a given transect (NStopPos), Number of species observed across an entire transect (NSO.BBS)
+
+**BBL** - Number of individuals captured at a given trapping event (NCap).
+
+**CBC** - Total distance covered on foot or by vehicle (TDist), Number of species observed during a given survey (NSO.CBC).
+
+**MWS** - Survey area covered in km2 (SurvArea)
+
+```{r}
+ebird.det <- ebird.data %>% select(RowID, Minutes, DistKM, NObs)
+bbs.det <- bbs.data %>% select(RowID, NStopPos, NSO.BBS = NSppObs) 
+bbl.det <- bbl.data %>% select(RowID, NCap)
+cbc.det <- cbc.data %>% select(RowID, TDist, NSO.CBC = NSppObs)
+mws.det <- mws.data %>% select(RowID, SurvArea)
+```
+
+
+## Environmental Covariates
+To save processing time in arcGIS, I reduced the location information to remove duplicates before exporting. This means I have to pair locations with their covariate data. (I used the  extract multivalue to point tool for quick data extraction.) 
+
+```{r}
+#Reduce to Points
+ebird.xy <- ebird.data %>% select(RowID, X, Y)
+bbs.xy <- bbs.data %>% select(RowID, X, Y)
+bbl.xy <- bbl.data %>% select(RowID, X, Y)
+cbc.xy <- cbc.data %>% select(RowID, X, Y)
+mws.xy <- mws.data %>% select(RowID, X, Y)
+
+#Environmental Covariates
+isdm.sf <- st_read("E:/ChesBay iSDM/SurveyLocationsAll.shp") %>%
+  mutate(X = st_coordinates(.)[,1], Y = st_coordinates(.)[,2]) %>%
+  st_drop_geometry() %>%
+  relocate(X, Y) %>%
+  mutate_all(~ ifelse(. == -9999, 0, .)) %>%
+  rename(D2Road = D2Road_1)
+
+#Merge spatial covariates and counts
+ebird.env <- merge(ebird.xy, isdm.sf, by = c("X", "Y"), all.x = T) %>%
+  select(-RowID)
+bbs.env <- merge(bbs.xy, isdm.sf, by = c("X", "Y"), all.x = T) %>%
+  select(-RowID)
+bbl.env <- merge(bbl.xy, isdm.sf, by = c("X", "Y"), all.x = T) %>%
+  select(-RowID)
+mws.env <- merge(mws.xy, isdm.sf, by = c("X", "Y"), all.x = T) %>%
+  select(-RowID)
+cbc.env <- merge(cbc.xy, isdm.sf, by = c("X", "Y"), all.x = T) %>%
+  select(-RowID)
+```
+
+## Temporal Autocorrelation Component
+We want to account for finer temporal trends, but we are unlikely to be able to fit a model with monthly or weekly spde fields given the data (we can try though after we get everything running, there is a lot of ebird data but that becomes much less for certain species). So what we will do is create covariates for biweekly and monthly periods (Not to be used together) which can be treated as a random effect.
+
+We will want to create 3 columns, 2week period, Month, and Season. For BBS, CBC, and MWS, we don't have the exact date but they are restricted to the same periods each year so we can use the same 2-week window each year. 
+
+```{r}
+temp.periods <- function(df){df %>% select(RowID, Date) %>%
+  mutate(Date = as.Date(Date)) %>%
+  mutate(Week2 = ceiling(yday(Date)/14), Month = month(Date)) %>%
+  mutate(Season = with(., case_when((Month >= 12 | Month <= 2)~1,
+                                    (Month > 2 & Month <= 5) ~ 2,
+                                    (Month >= 6 & Month <= 8) ~ 3,
+                                    (Month >= 9 | Month <= 11) ~ 4,
+                                    is.na(Month)~NA, TRUE~NA)))}
+ebird.temp <- temp.periods(ebird.data)
+bbs.temp <- temp.periods(bbs.data)
+bbl.temp <- temp.periods(bbl.data)
+cbc.temp <- temp.periods(cbc.data)
+mws.temp <- temp.periods(mws.data)
+
+```
+
+## Spatiotemporal Mesh
+Just link in our interface/spillover models, we will use SPDE to account for the spatial autocorrelation in the data. We will create 4 seasonal surfaces (Spring Migration, Breeding Grounds, Fall Migration, Wintering Grounds). Don't need to worry about a 3d projection here as we are in a much smaller area than entire USA. 
+
+See [Dambly et al. 2023](https://doi.org/10.1111/ecog.06391) for discussion of how mesh construction can impact estimates. Findings showed that increasing coarsness affected accuracy, but there is a serious risk of overfitting with finer mesh. This did impact estimates. RECOMMEND MULTIPLE MESHES (finer, medium, coarser). Adjust max length of inner edge (Fine = 0.05, Med = 0.1, Coarse = .15)
+
+```{r}
+### Generate Mesh for SPDE
+studyarea.sp <- spTransform(as(studyarea, "Spatial"), CRS("+proj=longlat +datum=WGS84"))
+mesh <- inla.mesh.2d(boundary = inla.sp2segment(studyarea.sp),
+                     cutoff = 0.01,
+                     max.edge = c(0.1, 0.2))
+
+A.sb.ebird <- inla.spde.make.A(mesh, loc = as.matrix(ebird.xy[, c("X", "Y")]))
+A.sb.bbs <- inla.spde.make.A(mesh, loc = as.matrix(bbs.xy[, c("X", "Y")]))
+A.sb.bbl <- inla.spde.make.A(mesh, loc = as.matrix(bbl.xy[, c("X", "Y")]))
+A.sb.cbc <- inla.spde.make.A(mesh, loc = as.matrix(cbc.xy[, c("X", "Y")]))
+A.sb.mws <- inla.spde.make.A(mesh, loc = as.matrix(mws.xy[, c("X", "Y")]))
+
+
+#Create 1d temporal mesh for month, to = # of weeks in analysis
+mesh.t <- inla.mesh.1d(seq(from = 1, to = 4, by = 1))
+k <- mesh.t$n
+
+# Generate spde components for each Season
+spde <- inla.spde2.pcmatern(mesh = mesh,
+                            constr = T,
+                            prior.range = c(1, 0.5),
+                            prior.sigma = c(1, 0.01))
+
+#links temporal and spatial
+iset <- inla.spde.make.index('i',
+                             n.spde = spde$n.spde,
+                             n.group = k)
+
+#Save the mesh locations as a shapefile so you can get covariate values
+mesh.coords <- st_as_sf(data.frame(X = mesh$loc[,1], Y = mesh$loc[,2]), coords = c("X", "Y"), crs = 4326)
+# st_write(mesh.coords, dsn = "E:/ChesBay iSDM/IntegrationLocs.shp", delete_layer = T)
+#uncomment to rewrite if you change the mesh
+# We will still need to get environmental covariates at integration points,
+# So we will export locations as a shapefile and use extract by multipoint tool again
+integrat.covs <- st_read("E:/ChesBay iSDM/IntegrationLocs.shp") %>%
+  mutate(X = st_coordinates(.)[,1], Y = st_coordinates(.)[,2]) %>%
+  st_drop_geometry() %>%
+  relocate(X, Y) %>%
+  mutate_all(~ ifelse(. == -9999, 0, .)) %>%
+  select(-FID_1)
+```
+
+## Weighting Survey Data
+[Fletcher et al. 2019](https://doi.org/10.1002/ecy.2710):
+
+[Paradinas et al. 2023](https://doi.org/10.1093/icesjms/fsad069): Discusses weighting data sets to prevent one single survey with many data points affecting the final surface too much. See supplementary files for code. **testing different data weightings may be useful to check whether the different data sources incorporated in the ISDM clash (i.e. outputs sensitive to data weighting), suggesting that they sample different process. In such cases, one should probably not integrate these data sources into an ISDM as it may negatively impact the estimates.**
+
+**I will return to this once we have models running to see if we need to weight by survey**
+
+
+## Presence Only (EBird, BBL) + Presence/Absence (BBS, CBC, MWS)
+So this is going to have to be a Frankenstein approach of a couple of different previously described methods.
+
+We want to:
+* Integrate PO and P/A data types
+* Account for seasonal differences in spatial autocorrelation across locations (spatiotemporal SPDE)
+* Account for sampling bias in PO data (shared spatial fields)
+* Account for smaller scale temporal trends (Month/Week2 random effect)
+* Account for variation associated with local conditions (environmental covariates)
+* Account for sampling bias (sampling effort/accessibility covariates)
+
+[Ahmad Suhaimi et al. 2021](https://doi.org/10.1111/ddi.13255): [Example Code.](https://github.com/NERC-CEH/IDM_comparisons/blob/master/Run%20models%20joint%20covariate%20for%20bias.R) To fit the PO data as a Poisson process, information on covariate values at integration points is also required. The method of [Simpson et al. 2016](https://doi.org/10.1093/biomet/asv064) was used to derive integration points and set weights in the likelihood. This method is suitable when models are fit using INLA and requires a suitable triangulation (mesh) of the domain to be defined.
+
+[Preferential Sampling in INLA](https://becarioprecario.bitbucket.io/spde-gitbook/ch-lcox.html#sec:prefsampl)
+
+[Toolbox for fitting complex SPDE models in INLA](https://www.jstor.org/stable/41713484)
+
+[Simmonds et al. 2022](https://doi.org/10.1111/ecog.05146): Uses a secondary spatial field to account for sampling bias. Will attempt this for EBirds and BBL. [THEIR CODE](https://github.com/NERC-CEH/IOFFsimwork)
+
+[Simpson et al. 2016](https://doi.org/10.1093/biomet/asv064): See section 7.3
+
+[Relevant(?) tutorial for INLA](https://becarioprecario.bitbucket.io/spde-gitbook/ch-spacetime.html#ch:two-meshes)
+
+[Spatiotemporal SPDE INLA Vignette](https://becarioprecario.bitbucket.io/spde-gitbook/ch-spacetime.html#discrete-time-domain)
+
+Other papers with related examples:
+[Adde et al. 2021](https://doi.org/10.1002/ecs2.3790) - Also provides context for sampling effort
+[Sicacha-Parada et al. 2021](https://doi.org/10.1016/j.spasta.2020.100446)
+[Yuan et al. 2017](https://doi.org/10.1214/17-AOAS1078)
+[Martino et al. 2021](https://doi.org/10.1111/ecog.05843)
+
+```{r, include = F}
+#Code adapted from Ahmad Suhaimi et al 2021
+# create integration stack
+min_x <- min(isdm.sf$X)
+min_y <- min(isdm.sf$Y)
+max_x <- max(isdm.sf$X)
+max_y <- max(isdm.sf$Y)
+loc.d <- t(matrix(c(min_x,min_y,max_x,min_y,max_x,max_y,min_x,max_y,min_x,min_y), 2))
+#make domain into spatial polygon
+domainSP <- SpatialPolygons(list(Polygons(list(Polygon(loc.d)), '0')))
+#intersection between domain and dual mesh
+poly.gpc <- as(domainSP@polygons[[1]]@Polygons[[1]]@coords, "gpc.poly")
+
+#make dual mesh
+dd <- deldir::deldir(mesh$loc[, 1], mesh$loc[, 2])
+tiles <- deldir::tile.list(dd)
+w <- sapply(tiles, 
+            function(p) rgeos::area.poly(rgeos::intersect(as(cbind(p$x, p$y), "gpc.poly"), poly.gpc)))
+nv <- mesh$n
+n.ebird <- nrow(ebird.data)
+n.bbl <- nrow(bbl.data)
+
+#change data to include 0s for nodes and 1s for presences
+y.ebird.pp <- rep(0:1, c(nv*4, n.ebird))
+y.bbl.pp <- rep(0:1, c(nv*4, n.bbl))
+
+#add expectation vector (area for integration points/nodes and 0 for presences)
+e.ebird.pp <- c(w, w, w, w, rep(0, n.ebird))
+e.bbl.pp <- c(w, w, w, w, rep(0, n.bbl))
+
+#diagonal matrix for integration point A matrix
+imat <- Diagonal(nv, rep(1, nv))
+
+#Create all relevant A Matrix
+A.ebird <- inla.spde.make.A(mesh, 
+                            loc = rbind(mesh$loc[,1:2], mesh$loc[,1:2], mesh$loc[,1:2], 
+                                        mesh$loc[,1:2], as.matrix(ebird.xy[, c("X", "Y")])),
+                            group = c(rep(1:4, each = nrow(mesh$loc)), ebird.temp$Season), 
+                            group.mesh = mesh.t)
+A.bbs <- inla.spde.make.A(mesh, loc = as.matrix(bbs.xy[, c("X", "Y")]), 
+                          group = bbs.temp$Season, group.mesh = mesh.t)
+A.bbl <- inla.spde.make.A(mesh, loc = rbind(mesh$loc[,1:2], mesh$loc[,1:2], mesh$loc[,1:2], 
+                                        mesh$loc[,1:2], as.matrix(bbl.xy[, c("X", "Y")])),
+                            group = c(rep(1:4, each = nrow(mesh$loc)), bbl.temp$Season), 
+                          group.mesh = mesh.t)
+A.cbc <- inla.spde.make.A(mesh, loc = as.matrix(cbc.xy[, c("X", "Y")]),
+                            group = cbc.temp$Season, group.mesh = mesh.t)
+A.mws <- inla.spde.make.A(mesh, loc = as.matrix(mws.xy[, c("X", "Y")]),
+                            group = mws.temp$Season, 
+                          group.mesh = mesh.t)
+
+A.ebird.pp <- rbind(imat, imat, imat, imat, A.sb.ebird)
+A.bbl.pp <- rbind(imat, imat, imat, imat, A.sb.bbl)
+```
+
+[Copy feature in INLA for SPDE](https://becarioprecario.bitbucket.io/inla-gitbook/ch-INLAfeatures.html#copy-feature)
+
+We have to do some additional adjustments to account for the temporal aspect of the SPDE. Not as straightforward as the examples.
+
+```{r}
+### PRESENCE-ONLY DATA
+#Ebird
+ebird.stk <- inla.stack(data = list(y = cbind(y.ebird.pp, NA, NA),
+                                    e = e.ebird.pp),
+                        effects = list(list(cbind(data.frame(int.EBird = rep(1, nv*4 + n.ebird),
+                                                   Season = c(rep(1:4, each = nv), ebird.temp$Season),
+                                                   Week2 = c(rep(c(1,3,7,10), each = nv), ebird.temp$Week2),
+                                                   Month = c(rep(c(1,3,7,10)*4, each = nv), ebird.temp$Month)),
+                                                  rbind(integrat.covs, integrat.covs, integrat.covs,
+                                                        integrat.covs, ebird.env))),
+                                       EBird_field = 1:spde$n.spde,
+                                       iset),
+                        A=list(1, A.ebird.pp, A.ebird),
+                        tag="ebird_data")
+
+### PRESENCE-ABSENCE DATA
+bbs.stk <- inla.stack(data = list(y = cbind(NA, bbs.data$Occ, NA),
+                                Ntrials = rep(1, nrow(bbs.data))),
+                      effects=list(list(cbind(data.frame(int.BBS = rep(1, length(bbs.data$Occ))),
+                                        bbs.temp[, 3:ncol(bbs.temp)],
+                                        bbs.env[,3:ncol(bbs.env)],
+                                        bbs.det[,2:ncol(bbs.det)])),
+                                       BBS_field = 1:spde$n.spde,
+                                   iset),
+                      A=list(1, A.sb.bbs, A.bbs),
+                      tag="bbs_data")
+
+
+cbc.stk <- inla.stack(data = list(y = cbind(NA, NA, cbc.data$Occ),
+                                Ntrials = rep(1, nrow(cbc.data))),
+                      effects=list(list(cbind(data.frame(int.CBC = rep(1, length(cbc.data$Occ))),
+                                        cbc.temp[, 3:ncol(cbc.temp)],
+                                        cbc.env[,3:ncol(cbc.env)],
+                                        cbc.det[,2:ncol(cbc.det)])),
+                                       CBC_field = 1:spde$n.spde,
+                                   iset),
+                      A=list(1, A.sb.cbc, A.cbc),
+                      tag="cbc_data")
+
+all.stk <- inla.stack(cbc.stk, bbs.stk, ebird.stk)
+
+```
+
+Once everything is packaged, we can setup the model. 
+
+```{r}
+#Formula
+isdm.formula = y ~  -1 + int.EBird + int.BBS + int.CBC +
+  f(i, model = spde, group = i.group, control.group = list(model = 'ar1', hyper = h.spec)) +
+  f(Month, model = 'ar1', hyper = prior.week2, cyclic = T) + 
+  f(EBird_field, model = spde) +
+  f(BBS_field, copy = 'EBird_field', fixed = TRUE) +
+  f(CBC_field, copy = 'EBird_field', fixed = TRUE)
+
+#Prior for SPDE
+h.spec <- list(rho = list(prior = 'pc.cor1', param = c(0, 0.9)))
+prec.prior <- list(prior = 'pc.prec', param = c(1, 0.01))
+prior.week2 <- list(theta = list(prior = 'pc.cor1', param = c(0, 0.9)))
+
+
+#INLA Call
+result <- inla(isdm.formula, 
+               family = c("poisson", "binomial", "binomial"),
+                 data = inla.stack.data(all.stk),
+                 control.predictor = list(A = inla.stack.A(all.stk), 
+                                          compute=TRUE),
+                 control.family = list(list(link = "log"), 
+                                       list(link = "cloglog"), 
+                                       list(link = "cloglog")),
+                 E = inla.stack.data(all.stk)$e,
+                 Ntrials = inla.stack.data(all.stk)$Ntrials,
+                 control.compute = list(dic = FALSE, 
+                                        cpo = FALSE,   
+                                        waic = TRUE),
+                 verbose=T, inla.mode = "experimental", 
+                 control.inla = list(int.strategy='eb')
+)
+```
+
+
+## Examine Outputs
+
+```{r}
+##project the mesh onto the initial simulated grid 100x100 cells in dimension
+  proj1<-inla.mesh.projector(mesh,
+                             ylim=c(min_y,max_y),
+                             xlim=c(min_x,max_x))
+  
+  ##pull out the mean of the random field for the NPMS model
+  xmean1 <- inla.mesh.project(proj1, 
+                              result$summary.random$EBird_field$mean)
+  
+  
+  image.plot(min_x:max_x,min_y:max_y,
+             xmean1, 
+             col=tim.colors(),
+             xlab='', ylab='',
+             main="Joint_bias-mean of r.f",
+             asp=1,
+             zlim=c(-3,3))
+  
+  image.plot(list(x=dat1$Lam$xcol,#*100, 
+                  y=dat1$Lam$yrow,#*100, 
+                  z=t(dat1$rf.s)), 
+             main='Truth', 
+             asp=1)
+             #zlim=c(-3,3)) # to make sure scale = same
+  
+  #~~~points(structured_data[structured_data[,4] %in% 0,2:3], pch=16, col='white') #absences
+  #~~~points(structured_data[structured_data[,4] %in% 1,2:3], pch=16, col='black')
+  
+  ##plot the standard deviation of random field
+  xsd1 <- inla.mesh.project(proj1, result$summary.random$uns_field$sd)
+  
+  image.plot(1:max_x,1:max_y,
+             xsd1, 
+             col=tim.colors(),
+             xlab='', ylab='', 
+             main="Joint_bias-sd of r.f",
+             asp=1)
+  #~~~dev.off()
+  }
+  
+  result$summary.fixed
+  
+  return(list(join.stack = join.stack, result = result))
+```
+
