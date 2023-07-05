@@ -6,16 +6,10 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(eval = F)
 
 #Load relevant packages
 lapply(c("dplyr", "sf", "lubridate", "INLA", "ggplot2", "fields"), require, character.only =T)
-
-#Set Working Directory
-setwd("C:/Users/mgonnerman/Box/Prosser_USGS/Matt Projects/ChesBay iSDM/") 
-
-#Clear Environment
-rm(list = ls())
 ```
 
 ## Objective
@@ -58,6 +52,12 @@ We will follow a point process iSDM approach where we estimate an intensity surf
 First we will define our study area and identify the species of interest (we are focusing on waterfowl species within this analysis).
 
 ```{r}
+#Set Working Directory
+setwd("C:/Users/mgonnerman/Box/Prosser_USGS/Matt Projects/ChesBay iSDM/") 
+
+#Clear Environment
+rm(list = ls())
+
 #Study Area
 studyarea <- st_read("Data/StudyArea.shp") %>%
   st_transform(4326)
@@ -422,84 +422,75 @@ Once everything is packaged, we can setup the model.
 
 ```{r}
 #Formula
-isdm.formula = y ~  -1 + int.EBird + int.BBS + int.CBC +
-  f(i, model = spde, group = i.group, control.group = list(model = 'ar1', hyper = h.spec)) +
-  f(Month, model = 'ar1', hyper = prior.week2, cyclic = T) + 
-  f(EBird_field, model = spde) +
-  f(BBS_field, copy = 'EBird_field', fixed = TRUE) +
-  f(CBC_field, copy = 'EBird_field', fixed = TRUE)
+isdm.formula = y ~  -1 + int.BBL + int.EBird + int.BBS + int.CBC + #Intercepts
+  D2Coast + Wet_10 + #Environmental Covariates
+  f(i, model = spde, group = i.group, control.group = list(model = 'iid')) + #SpatioTemp SPDE
+  f(Month,  model = 'ar1', hyper = prior.week2, cyclic = T) + #Monthly Autoregressive Term
+  f(BBL_field, model = spde) + #These are all related to sampling bias in BBL
+  f(EBird_field, copy = 'BBL_field', fixed = TRUE) +
+  f(BBS_field, copy = 'BBL_field', fixed = TRUE) +
+  f(CBC_field, copy = 'BBL_field', fixed = TRUE)
 
-#Prior for SPDE
+#Priors for the model
 h.spec <- list(rho = list(prior = 'pc.cor1', param = c(0, 0.9)))
 prec.prior <- list(prior = 'pc.prec', param = c(1, 0.01))
 prior.week2 <- list(theta = list(prior = 'pc.cor1', param = c(0, 0.9)))
 
-
 #INLA Call
-result <- inla(isdm.formula, 
-               family = c("poisson", "binomial", "binomial"),
-                 data = inla.stack.data(all.stk),
-                 control.predictor = list(A = inla.stack.A(all.stk), 
-                                          compute=TRUE),
-                 control.family = list(list(link = "log"), 
-                                       list(link = "cloglog"), 
-                                       list(link = "cloglog")),
-                 E = inla.stack.data(all.stk)$e,
-                 Ntrials = inla.stack.data(all.stk)$Ntrials,
-                 control.compute = list(dic = FALSE, 
-                                        cpo = FALSE,   
-                                        waic = TRUE),
-                 verbose=T, inla.mode = "experimental", 
-                 control.inla = list(int.strategy='eb')
+test <- inla(isdm.formula, 
+               family = c("poisson", "poisson", "poisson", "poisson"),
+                  data = inla.stack.data(all.stk),
+                  control.predictor = list(A = inla.stack.A(all.stk), 
+                                           compute=TRUE),
+                  control.family = list(list(link = "log"), 
+                                        list(link = "log"), 
+                                        list(link = "log"), 
+                                        list(link = "log")),
+                  E = inla.stack.data(all.stk)$e,
+                  control.compute = list(dic = FALSE, cpo = FALSE,  waic = TRUE),
+                  verbose=T, inla.mode = "experimental", 
+                  control.inla = list(int.strategy='eb'),
+                  control.fixed = list(expand.factor.strategy = 'inla')
 )
 ```
 
 
 ## Examine Outputs
-
 ```{r}
-##project the mesh onto the initial simulated grid 100x100 cells in dimension
-  proj1<-inla.mesh.projector(mesh,
-                             ylim=c(min_y,max_y),
-                             xlim=c(min_x,max_x))
-  
-  ##pull out the mean of the random field for the NPMS model
-  xmean1 <- inla.mesh.project(proj1, 
-                              result$summary.random$EBird_field$mean)
-  
-  
-  image.plot(min_x:max_x,min_y:max_y,
-             xmean1, 
-             col=tim.colors(),
-             xlab='', ylab='',
-             main="Joint_bias-mean of r.f",
-             asp=1,
-             zlim=c(-3,3))
-  
-  image.plot(list(x=dat1$Lam$xcol,#*100, 
-                  y=dat1$Lam$yrow,#*100, 
-                  z=t(dat1$rf.s)), 
-             main='Truth', 
-             asp=1)
-             #zlim=c(-3,3)) # to make sure scale = same
-  
-  #~~~points(structured_data[structured_data[,4] %in% 0,2:3], pch=16, col='white') #absences
-  #~~~points(structured_data[structured_data[,4] %in% 1,2:3], pch=16, col='black')
-  
-  ##plot the standard deviation of random field
-  xsd1 <- inla.mesh.project(proj1, result$summary.random$uns_field$sd)
-  
-  image.plot(1:max_x,1:max_y,
-             xsd1, 
-             col=tim.colors(),
-             xlab='', ylab='', 
-             main="Joint_bias-sd of r.f",
-             asp=1)
-  #~~~dev.off()
-  }
-  
-  result$summary.fixed
-  
-  return(list(join.stack = join.stack, result = result))
+#Set the size of the mesh projection
+stepsize <- 2 * 1 / 111
+nxy <- round(c(max_x-min_x, max_y-min_y) / stepsize)
+#Project the mesh onto a series of points
+projgrid <- inla.mesh.projector(mesh, xlim = c(min_x, max_x), ylim = c(min_y, max_y), dims = nxy)
+#Extract field values at each point
+#This first one is the spatiotemporal field
+st_field_mean <- list()
+for (j in 1:4){
+  st_field_mean[[j]] <- inla.mesh.project(
+    projgrid, test$summary.random$i$mean[iset$i.group == j])
+}
+
+#This is the sampling bias field for the bbl survey
+bbl_field_mean <- inla.mesh.project(projgrid, 
+                                    test$summary.random$BBL_field$mean)
+#Which points are within our study area
+xy.in <- inout(projgrid$lattice$loc, 
+               st_coordinates(studyarea)[,1:2])
+
+##Quickly plot the mesh outputs
+# BBL Sampling Bias
+image.plot(x = projgrid$x, y = projgrid$y, z = bbl_field_mean, 
+           xlab = "Longitude", ylab = "Latitude")
+
+#Spatiotemporal SPDE - each plot forresponds to a season
+par(c(2,2))
+for (j in 1:4) {
+  st_field_mean[[j]][!xy.in] <- NA
+  image.plot(x = projgrid$x, y = projgrid$y, z = st_field_mean[[j]], 
+             xlab = "Longitude", ylab = "Latitude", col = viridis(n = 210))
+}
+
+#And here are our intercepts and beta coefficients
+test$summary.fixed
 ```
 
